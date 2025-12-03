@@ -1,0 +1,184 @@
+name: Security Vulnerability Scanner
+
+on:
+  push:
+    branches: 
+      - main
+      - dev
+      - develop
+  pull_request:
+    branches: 
+      - main
+
+jobs:
+  vulnerability-scan:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Verify model files exist
+      run: |
+        if [ ! -f "xgboost_vulnerabilidades.pkl" ]; then
+          echo "❌ Error: Modelo xgboost_vulnerabilidades.pkl no encontrado"
+          echo "Por favor ejecuta el notebook Lab1_SEMMA_Software_Seguro.ipynb primero"
+          exit 1
+        fi
+        if [ ! -f "tfidf_vectorizer.pkl" ]; then
+          echo "❌ Error: Vectorizador tfidf_vectorizer.pkl no encontrado"
+          exit 1
+        fi
+        echo "✅ Modelos encontrados correctamente"
+        
+    - name: Scan C/C++ files for vulnerabilities
+      id: scan
+      continue-on-error: true
+      run: |
+        echo "Buscando archivos C/C++ en el repositorio..."
+        
+        # Buscar archivos C/C++
+        FILES=$(find . -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" \) ! -path "./.*" ! -path "*/node_modules/*")
+        
+        if [ -z "$FILES" ]; then
+          echo "ℹ️  No se encontraron archivos C/C++ para analizar"
+          echo "vulnerable=0" >> $GITHUB_OUTPUT
+          echo "total_files=0" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Ejecutar análisis
+        python predict_vulnerabilities.py . > scan_results.txt 2>&1
+        SCAN_EXIT_CODE=$?
+        
+        # Mostrar resultados
+        cat scan_results.txt
+        
+        # Guardar outputs
+        echo "vulnerable=$SCAN_EXIT_CODE" >> $GITHUB_OUTPUT
+        
+        # Contar archivos analizados
+        TOTAL=$(echo "$FILES" | wc -l)
+        echo "total_files=$TOTAL" >> $GITHUB_OUTPUT
+        
+        exit $SCAN_EXIT_CODE
+        
+    - name: Generate HTML report with SHAP
+      if: always() && steps.scan.outputs.total_files != '0'
+      run: |
+        python generate_report.py
+        
+    - name: Upload HTML report
+      if: always() && steps.scan.outputs.total_files != '0'
+      uses: actions/upload-artifact@v4
+      with:
+        name: vulnerability-report
+        path: vulnerability_report.html
+        retention-days: 30
+        
+    - name: Comment on PR with results
+      if: github.event_name == 'pull_request' && steps.scan.outputs.total_files != '0'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const scanResults = fs.readFileSync('scan_results.txt', 'utf8');
+          const vulnerable = '${{ steps.scan.outputs.vulnerable }}' === '1';
+          
+          const icon = vulnerable ? '🚨' : '✅';
+          const status = vulnerable ? 'VULNERABILIDADES DETECTADAS' : 'CÓDIGO SEGURO';
+          
+          const body = `## ${icon} Análisis de Seguridad - ${status}
+          
+          ### Resultados del Escaneo
+          
+          \`\`\`
+          ${scanResults}
+          \`\`\`
+          
+          ### Detalles
+          - **Modelo:** XGBoost (Gradient Boosting)
+          - **Metodología:** SEMMA
+          - **Umbral de alerta:** 70% de probabilidad
+          - **Archivos analizados:** ${{ steps.scan.outputs.total_files }}
+          
+          ${vulnerable ? '⚠️ **Acción requerida:** Revisa los archivos marcados como vulnerables antes de hacer merge.' : '✅ **Todo OK:** No se detectaron vulnerabilidades significativas.'}
+          
+          📊 **Reporte completo:** Descarga el artifact \`vulnerability-report\` para ver el análisis detallado con SHAP.
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: body
+          });
+          
+    - name: Create issue if vulnerabilities found
+      if: steps.scan.outputs.vulnerable == '1' && github.event_name == 'push'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const scanResults = fs.readFileSync('scan_results.txt', 'utf8');
+          
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `🚨 Vulnerabilidades detectadas en commit ${context.sha.substring(0, 7)}`,
+            body: `## Alerta de Seguridad
+            
+            El modelo de detección de vulnerabilidades ha identificado código potencialmente inseguro en el commit \`${context.sha}\`.
+            
+            ### Resultados del Análisis
+            
+            \`\`\`
+            ${scanResults}
+            \`\`\`
+            
+            ### Información del Commit
+            - **SHA:** ${context.sha}
+            - **Branch:** ${context.ref}
+            - **Autor:** @${context.actor}
+            - **Mensaje:** ${context.payload.head_commit?.message || 'N/A'}
+            
+            ### Próximos Pasos
+            1. Revisa los archivos marcados como vulnerables
+            2. Descarga el reporte HTML con análisis SHAP desde los artifacts
+            3. Aplica correcciones de seguridad
+            4. Ejecuta nuevamente el pipeline para verificar
+            
+            ---
+            *Este issue fue creado automáticamente por el pipeline de seguridad CI/CD*
+            `,
+            labels: ['security', 'vulnerability', 'automated']
+          });
+          
+    - name: Fail workflow if vulnerabilities found
+      if: steps.scan.outputs.vulnerable == '1'
+      run: |
+        echo "❌ El workflow falló debido a vulnerabilidades detectadas"
+        exit 1

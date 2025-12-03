@@ -11,7 +11,7 @@
 Carlos Campoverde, Juan Pasquel; Anthony Villareal
 
 ## Dataset utilizado  
-**DiverseVul** (bstee615/diversevul – Hugging Face)  
+**DiverseVul** (bstee615/diversevul – Hugging Face)  https://huggingface.co/datasets/bstee615/diversevul 
 - Total funciones originales: 264.393  
 - Vulnerables reales: 15.145  
 - Muestreo balanceado final: **10.000 funciones** (5.000 vulnerables + 5.000 seguras) → requisito punto 4.1 cumplido
