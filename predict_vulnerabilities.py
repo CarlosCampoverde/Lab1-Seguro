@@ -84,7 +84,7 @@ def predict_vulnerability(code_snippet, model_path='xgboost_vulnerabilidades.pkl
     X = pd.concat([manual_features.reset_index(drop=True), tfidf_df], axis=1)
     
     # Predicción
-    probability = model.predict_proba(X)[0][1]  # Probabilidad de ser vulnerable
+    probability = model.predict_proba(X)[0][1]  # Nivel de confianza
     prediction = "VULNERABLE" if probability > 0.7 else "SEGURO"
     
     return prediction, probability
@@ -96,7 +96,7 @@ def analyze_file(file_path, threshold=0.7):
     
     Args:
         file_path: Ruta al archivo
-        threshold: Umbral de probabilidad para considerar vulnerable
+        threshold: Umbral de nivel de confianza para considerar vulnerable
         
     Returns:
         dict: Resultados del análisis
@@ -154,7 +154,7 @@ def main():
             status_symbol = "🚨" if result['is_vulnerable'] else "✅"
             print(f"{status_symbol} {result['file']}")
             print(f"   Predicción: {result['prediction']}")
-            print(f"   Probabilidad: {result['probability']*100:.2f}%")
+            print(f"   Nivel de confianza: {result['probability']*100:.2f}%")
             print()
             
             if result['is_vulnerable']:
