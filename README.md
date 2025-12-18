@@ -43,7 +43,7 @@ Carlos Campoverde, Juan Pasquel; Anthony Villareal
 | Explore  | Estadísticas descriptivas + 4 visualizaciones (boxplots, histogramas, countplot)     |
 | Modify   | Feature engineering completo: <br>• TF-IDF (100 tokens) <br>• Funciones peligrosas por lenguaje (strcpy, eval, exec, etc.) <br>• Detección automática de lenguaje de programación <br>• Presencia de sanitización <br>• Complejidad ciclomática adaptada por lenguaje <br>• Anidamiento (llaves para C/Java, indentación para Python/Ruby) |
 | Model    | XGBoost (scikit-learn + xgboost) – 500 árboles, profundidad 12                       |
-| Assess   | Accuracy 65.5 % (coherente con baselines del paper original DiverseVul – RAID 2023) <br>Classification report + matriz de confusión + SHAP values |
+| Assess   | **Accuracy 71.34%** - Modelo funcional para detección de vulnerabilidades <br>Classification report + matriz de confusión implementados <br>Coherente con complejidad del dataset multi-lenguaje |
 
 ## Resultados finales  
 
