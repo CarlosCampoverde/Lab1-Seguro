@@ -1,2 +1,13 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Git LFS configuration for large files
+# Track model files
+*.pkl filter=lfs diff=lfs merge=lfs -text
+*.joblib filter=lfs diff=lfs merge=lfs -text
+*.h5 filter=lfs diff=lfs merge=lfs -text
+
+# Track large data files
+diversevul*.json filter=lfs diff=lfs merge=lfs -text
+diversevul*.csv filter=lfs diff=lfs merge=lfs -text
+CVEFixes*.csv filter=lfs diff=lfs merge=lfs -text
