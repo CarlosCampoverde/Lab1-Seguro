@@ -13,27 +13,140 @@ from pathlib import Path
 import re
 from datetime import datetime
 
-DANGEROUS_FUNCTIONS = [
-    'strcpy', 'gets', 'sprintf', 'strcat', 'scanf', 
-    'system', 'exec', 'popen', 'memset', 'memcpy'
-]
+# Mapeo de extensiones a lenguajes soportados
+SUPPORTED_LANGUAGES = {
+    '.c': 'C',
+    '.h': 'C',
+    '.cpp': 'C++',
+    '.cc': 'C++',
+    '.cxx': 'C++',
+    '.hpp': 'C++',
+    '.java': 'Java',
+    '.py': 'Python',
+    '.js': 'JavaScript',
+    '.jsx': 'JavaScript',
+    '.ts': 'TypeScript',
+    '.php': 'PHP',
+    '.rb': 'Ruby',
+    '.go': 'Go'
+}
 
-def extract_features(code):
-    """Extrae características del código (mismo que predict_vulnerabilities.py)"""
-    features = {}
-    features['longitud'] = len(code)
-    features['lineas'] = code.count('\n') + 1
-    features['func_peligrosas'] = sum(code.count(func) for func in DANGEROUS_FUNCTIONS)
-    features['usa_strcpy'] = int('strcpy' in code)
-    features['usa_gets'] = int('gets' in code)
-    features['usa_system'] = int('system' in code)
+# Funciones peligrosas por lenguaje
+DANGEROUS_FUNCTIONS_BY_LANG = {
+    'C': ['strcpy', 'gets', 'sprintf', 'strcat', 'scanf', 'system', 'exec', 'popen', 'memset', 'memcpy'],
+    'C++': ['strcpy', 'gets', 'sprintf', 'strcat', 'scanf', 'system', 'exec', 'popen', 'memset', 'memcpy'],
+    'Python': ['eval', 'exec', 'compile', '__import__', 'pickle.loads', 'input', 'os.system'],
+    'Java': ['Runtime.exec', 'ProcessBuilder', 'ScriptEngine', 'readObject', 'Class.forName'],
+    'JavaScript': ['eval', 'Function', 'innerHTML', 'document.write', 'dangerouslySetInnerHTML'],
+    'TypeScript': ['eval', 'Function', 'innerHTML', 'document.write', 'dangerouslySetInnerHTML'],
+    'PHP': ['eval', 'exec', 'system', 'shell_exec', 'passthru', 'unserialize', 'include', 'require'],
+    'Ruby': ['eval', 'exec', 'system', 'send', 'instance_eval', 'class_eval', 'Marshal.load'],
+    'Go': ['exec.Command', 'os.Exec', 'syscall.Exec', 'unsafe.Pointer']
+}
+
+DANGEROUS_FUNCTIONS = DANGEROUS_FUNCTIONS_BY_LANG['C']  # Para backward compatibility
+
+def detect_language_from_code(code, file_extension=None):
+    """Detecta el lenguaje de programación basado en patrones de código."""
+    if file_extension and file_extension in SUPPORTED_LANGUAGES:
+        return SUPPORTED_LANGUAGES[file_extension]
     
-    security_patterns = ['sanitize', 'escape', 'check', 'validate', 'safe_str']
-    features['sanitizacion'] = int(any(pattern in code.lower() for pattern in security_patterns))
-    features['complejidad_ciclomatica'] = len(re.findall(r'\b(if|while|for|case|catch|&&|\|\|)\b', code))
-    features['anidamiento'] = abs(code.count('{') - code.count('}'))
+    if 'public class' in code or 'import java.' in code:
+        return 'Java'
+    elif 'def ' in code and 'import ' in code and ':' in code:
+        return 'Python'
+    elif '<?php' in code or '$_' in code:
+        return 'PHP'
+    elif 'function' in code and '=>' in code:
+        return 'JavaScript'
+    elif 'package main' in code and 'func ' in code:
+        return 'Go'
+    elif 'def ' in code and 'end' in code:
+        return 'Ruby'
+    elif '#include' in code or 'int main' in code:
+        return 'C' if '.c' in str(file_extension) else 'C++'
+    else:
+        return 'C'
+
+
+def extract_features(code, language=None, file_extension=None):
+    """Extrae características del código (mismo que predict_vulnerabilities.py y notebook)"""
+    f = {}
+    code_lower = code.lower()
     
-    return pd.Series(features)
+    # Funciones peligrosas (multi-lenguaje)
+    dangerous_c = ['strcpy','gets','sprintf','strcat','scanf','system','exec','popen','memset','memcpy']
+    dangerous_java = ['Runtime.exec','ProcessBuilder','eval','deserialize','readObject']
+    dangerous_python = ['eval','exec','pickle.loads','subprocess','os.system','__import__']
+    dangerous_js = ['eval','innerHTML','document.write','setTimeout','setInterval']
+    
+    # Features básicas (universal para todos los lenguajes)
+    f['longitud'] = len(code)
+    f['lineas'] = code.count('\n') + 1
+    f['long_prom_linea'] = f['longitud'] / max(f['lineas'], 1)
+    
+    # Funciones peligrosas (multi-lenguaje)
+    f['func_peligrosas_c'] = sum(code.count(w) for w in dangerous_c)
+    f['func_peligrosas_java'] = sum(code.count(w) for w in dangerous_java)
+    f['func_peligrosas_python'] = sum(code.count(w) for w in dangerous_python)
+    f['func_peligrosas_js'] = sum(code.count(w) for w in dangerous_js)
+    f['total_peligrosas'] = f['func_peligrosas_c'] + f['func_peligrosas_java'] + f['func_peligrosas_python'] + f['func_peligrosas_js']
+    
+    # Funciones específicas críticas
+    f['usa_strcpy'] = int('strcpy' in code)
+    f['usa_gets'] = int('gets' in code)
+    f['usa_eval'] = int('eval' in code)
+    f['usa_exec'] = int('exec' in code)
+    
+    # Sanitización y validación
+    f['sanitizacion'] = int(any(p in code_lower for p in ['sanitize','escape','check','validate','safe','filter']))
+    
+    # Complejidad ciclomática (universal)
+    f['complejidad_ciclomatica'] = len(re.findall(r'\b(if|while|for|case|catch|&&|\|\||switch|else)\b', code))
+    
+    # Anidamiento (basado en brackets)
+    f['anidamiento'] = abs(code.count('{') - code.count('}'))
+    
+    # Características adicionales
+    f['comentarios'] = code.count('//') + code.count('/*') + code.count('#')
+    f['imports'] = code.count('import') + code.count('include') + code.count('require')
+    f['excepciones'] = code.count('try') + code.count('catch') + code.count('except') + code.count('finally')
+    
+    # Detección simple de lenguaje (heurística)
+    if 'def ' in code or 'import ' in code or 'print(' in code:
+        f['es_python'] = 1
+    else:
+        f['es_python'] = 0
+        
+    if 'public class' in code or 'private ' in code or 'void ' in code:
+        f['es_java'] = 1
+    else:
+        f['es_java'] = 0
+        
+    if 'function' in code or 'const ' in code or 'let ' in code or '=> ' in code:
+        f['es_javascript'] = 1
+    else:
+        f['es_javascript'] = 0
+    
+    # FEATURES AVANZADAS DE SEGURIDAD (para mejorar accuracy)
+    # Patrones de validación de entrada
+    f['tiene_validacion_null'] = int('null' in code_lower or 'nullptr' in code_lower or 'none' in code_lower)
+    f['tiene_validacion_length'] = int('length' in code_lower or 'size' in code_lower or 'len(' in code_lower)
+    f['tiene_limites'] = int('min' in code_lower or 'max' in code_lower or 'limit' in code_lower)
+    
+    # Funciones seguras alternativas
+    f['usa_funciones_seguras'] = int(any(w in code for w in ['strncpy', 'snprintf', 'fgets', 'strncat']))
+    f['tiene_constantes_tamano'] = int('#define' in code or 'const ' in code or 'final ' in code)
+    
+    # Manejo de errores
+    f['densidad_excepciones'] = f['excepciones'] / max(f['lineas'], 1)
+    f['tiene_return_error'] = int('return -1' in code or 'return null' in code_lower or 'return false' in code_lower)
+    
+    # Ratio de complejidad vs tamaño
+    f['ratio_complejidad'] = f['complejidad_ciclomatica'] / max(f['lineas'], 1)
+    f['ratio_comentarios'] = f['comentarios'] / max(f['lineas'], 1)
+    
+    return pd.Series(f)
 
 
 def generate_shap_explanation(code_snippet, model, vectorizer, output_path='shap_explanation.png'):
@@ -68,23 +181,38 @@ def generate_html_report():
     model = joblib.load('xgboost_vulnerabilidades.pkl')
     vectorizer = joblib.load('tfidf_vectorizer.pkl')
     
-    # Buscar archivos C/C++
-    files_to_analyze = list(Path('.').rglob('*.c')) + list(Path('.').rglob('*.cpp'))
+    # Buscar archivos de todos los lenguajes soportados
+    files_to_analyze = []
+    for ext in SUPPORTED_LANGUAGES.keys():
+        files_to_analyze.extend(list(Path('.').rglob(f'*{ext}')))
     files_to_analyze = [f for f in files_to_analyze if '.git' not in str(f)]
     
     if not files_to_analyze:
-        print("No se encontraron archivos para analizar")
+        supported_exts = ', '.join(SUPPORTED_LANGUAGES.keys())
+        print(f"No se encontraron archivos para analizar")
+        print(f"Extensiones soportadas: {supported_exts}")
         return
     
     # Analizar cada archivo
     results = []
+    language_stats = {}
+    
     for file_path in files_to_analyze:
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 code = f.read()
             
+            # Detectar lenguaje
+            file_extension = file_path.suffix.lower()
+            language = detect_language_from_code(code, file_extension)
+            
+            # Estadísticas por lenguaje
+            if language not in language_stats:
+                language_stats[language] = {'total': 0, 'vulnerable': 0}
+            language_stats[language]['total'] += 1
+            
             # Extraer features
-            manual_features = extract_features(code).to_frame().T
+            manual_features = extract_features(code, language, file_extension).to_frame().T
             tfidf_matrix = vectorizer.transform([code])
             tfidf_df = pd.DataFrame(
                 tfidf_matrix.toarray(), 
@@ -96,6 +224,9 @@ def generate_html_report():
             probability = model.predict_proba(X)[0][1]
             prediction = "VULNERABLE" if probability > 0.7 else "SEGURO"
             
+            if prediction == "VULNERABLE":
+                language_stats[language]['vulnerable'] += 1
+            
             # SHAP (solo para archivos vulnerables)
             shap_img = None
             if probability > 0.7:
@@ -105,6 +236,7 @@ def generate_html_report():
             
             results.append({
                 'file': str(file_path),
+                'language': language,
                 'prediction': prediction,
                 'probability': probability,
                 'shap_img': shap_img,
@@ -300,6 +432,10 @@ def generate_html_report():
                     <div class="stat-value">{len(results)}</div>
                 </div>
                 <div class="stat-card">
+                    <div class="stat-label">Lenguajes</div>
+                    <div class="stat-value" style="color: #667eea;">{len(language_stats)}</div>
+                </div>
+                <div class="stat-card">
                     <div class="stat-label">Vulnerables</div>
                     <div class="stat-value" style="color: #dc3545;">
                         {sum(1 for r in results if r['probability'] > 0.7)}
@@ -316,9 +452,39 @@ def generate_html_report():
                     <div class="stat-value" style="font-size: 1.5em;">XGBoost</div>
                 </div>
             </div>
+    """
+    
+    # Generar tarjetas de estadísticas por lenguaje
+    lang_emojis = {"C": "🔵", "C++": "🔷", "Python": "🐍", "Java": "☕", "JavaScript": "📜", "TypeScript": "📘", "PHP": "🐘", "Ruby": "💎", "Go": "🔷"}
+    lang_cards_html = ""
+    for lang, stats in sorted(language_stats.items()):
+        emoji = lang_emojis.get(lang, "📄")
+        color = "#dc3545" if stats["vulnerable"] > 0 else "#28a745"
+        percentage = (stats["vulnerable"]/stats["total"]*100)
+        lang_cards_html += f'''
+                    <div class="stat-card" style="text-align: left;">
+                        <div style="font-size: 1.5em; margin-bottom: 10px;">
+                            {emoji} {lang}
+                        </div>
+                        <div style="color: #666; font-size: 0.9em;">
+                            Total: {stats["total"]} archivos
+                        </div>
+                        <div style="color: {color}; font-weight: bold;">
+                            Vulnerables: {stats["vulnerable"]} ({percentage:.1f}%)
+                        </div>
+                    </div>
+        '''
+    
+    # Continuar HTML
+    html += f"""
             
             <div class="results">
-                <h2 style="margin-bottom: 20px; color: #1e3c72;">📊 Resultados Detallados</h2>
+                <h2 style="margin-bottom: 20px; color: #2a5298;">📊 Estadísticas por Lenguaje</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
+                    {lang_cards_html}
+                </div>
+                
+                <h2 style="margin-bottom: 20px; color: #1e3c72;">📄 Resultados Detallados</h2>
     """
     
     # Agregar cada archivo
@@ -328,10 +494,17 @@ def generate_html_report():
         badge_class = 'vulnerable' if is_vulnerable else 'safe'
         badge_text = '🚨 VULNERABLE' if is_vulnerable else '✅ SEGURO'
         
+        # Emoji por lenguaje
+        lang_emoji = {
+            'C': '🔵', 'C++': '🔷', 'Python': '🐍', 'Java': '☕',
+            'JavaScript': '📜', 'TypeScript': '📘', 'PHP': '🐘',
+            'Ruby': '💎', 'Go': '🔷'
+        }.get(result.get('language', 'Unknown'), '📄')
+        
         html_content += f"""
                 <div class="file-card {card_class}">
                     <div class="file-header">
-                        <div class="file-name">📄 {result['file']}</div>
+                        <div class="file-name">{lang_emoji} [{result.get('language', 'Unknown')}] {result['file']}</div>
                         <div class="badge {badge_class}">{badge_text}</div>
                     </div>
                     
@@ -342,6 +515,7 @@ def generate_html_report():
                     </div>
                     
                     <div class="metadata">
+                        <span>💻 Lenguaje: {result.get('language', 'Unknown')}</span>
                         <span>📏 Líneas: {result['lines']}</span>
                         <span>⚠️ Funciones peligrosas: {result['dangerous_funcs']}</span>
                         <span>🎯 Confianza: {result['probability']*100:.2f}%</span>
