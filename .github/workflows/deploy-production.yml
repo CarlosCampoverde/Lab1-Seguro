@@ -1,9 +1,7 @@
 name: 🚀 Deploy a Producción
 
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:  # Permite ejecutar manualmente
+  workflow_dispatch:  # Permite ejecución manual y desde otro workflow
 
 env:
   TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -18,6 +16,8 @@ jobs:
     steps:
       - name: 📥 Checkout código
         uses: actions/checkout@v4
+        with:
+          ref: test  # Deploy desde rama test
       
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
@@ -25,8 +25,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       
       - name: 📦 Instalar dependencias
-        run: |
-          pip install requests
+        run: pip install requests
       
       - name: 📢 Notificar inicio de deploy
         run: |
@@ -35,8 +34,7 @@ jobs:
             --status "info"
       
       - name: 🐳 Build Docker image
-        run: |
-          docker build -t vulnerability-scanner:latest .
+        run: docker build -t vulnerability-scanner:latest .
       
       - name: 🚀 Deploy to Render
         env:
@@ -49,7 +47,7 @@ jobs:
               -H "Authorization: Bearer $RENDER_API_KEY" \
               -H "Content-Type: application/json"
           else
-            echo "⚠️ Secrets de Render no configurados. Deploy manual requerido."
+            echo "⚠️ Secrets de Render no configurados. Simulando deploy..."
           fi
       
       - name: ⏳ Esperar deploy
@@ -57,7 +55,6 @@ jobs:
       
       - name: ✅ Verificar deployment
         run: |
-          # Intentar verificar que el servicio esté online
           if curl -f https://vulnerability-scanner-kaiq.onrender.com/health; then
             echo "✅ Servicio online"
           else
@@ -70,19 +67,16 @@ jobs:
           python telegram_notifier.py \
             --message "🎉 DESPLIEGUE EXITOSO a Producción!
             
-📦 Commit: ${{ github.sha }}
 🔗 URL: https://vulnerability-scanner-kaiq.onrender.com
-✅ Endpoints:
-  - /health (status check)
-  - /stats (modelo info)
-  - /predict (análisis de código)" \
+✅ Endpoints disponibles:
+  • /health (status check)
+  • /stats (modelo info)  
+  • /predict (análisis de código)" \
             --status "success"
       
       - name: 📢 Notificar error en deploy
         if: failure()
         run: |
           python telegram_notifier.py \
-            --message "❌ ERROR en despliegue a producción
-            
-Revisar logs en GitHub Actions" \
+            --message "❌ ERROR en despliegue a producción. Revisar logs en GitHub Actions" \
             --status "error"
