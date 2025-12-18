@@ -27,8 +27,8 @@ def test_extract_features_vulnerable_c():
     # Verificar features básicas que existen
     assert 'usa_strcpy' in features
     assert features['usa_strcpy'] == True
-    assert 'total_peligrosas' in features
-    assert features['total_peligrosas'] > 0
+    assert 'func_peligrosas' in features
+    assert features['func_peligrosas'] > 0
 
 def test_extract_features_safe_c():
     """Test de extracción de features de código C seguro"""
