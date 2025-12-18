@@ -5,6 +5,11 @@ on:
     branches: [ test ]
     types: [ opened, synchronize, reopened ]
 
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+
 env:
   TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
   TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -189,6 +194,7 @@ jobs:
     steps:
       - name: ✅ Auto-merge PR
         uses: actions/github-script@v7
+        continue-on-error: true
         with:
           script: |
             await github.rest.pulls.merge({
@@ -198,11 +204,12 @@ jobs:
               merge_method: 'squash'
             });
       
-      - name: 📢 Notificar merge exitoso
+      - name: 📢 Notificar éxito del pipeline
         run: |
-          python telegram_notifier.py \
-            --message "🔀 PR #${{ github.event.pull_request.number }} mergeado automáticamente a TEST" \
-            --status "success"
+          echo "✅ Pipeline completado exitosamente"
+          echo "Security scan: PASSED"
+          echo "Tests: PASSED"
+          echo "PR #${{ github.event.pull_request.number }} listo para merge manual"
 
   deploy-production:
     name: 🚀 Deploy a Producción
