@@ -1,0 +1,37 @@
+# Render configuration file
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: vulnerability-scanner-api
+    env: docker
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    
+    # Health check
+    healthCheckPath: /health
+    
+    # Environment variables
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: MODEL_PATH
+        value: xgboost_vulnerabilidades.pkl
+      - key: VECTORIZER_PATH
+        value: tfidf_vectorizer.pkl
+      - key: PYTHON_VERSION
+        value: 3.11
+    
+    # Auto-deploy on push to main
+    autoDeploy: true
+    
+    # Free tier configuration
+    plan: free
+    region: oregon
+    
+    # Build configuration
+    buildCommand: pip install -r requirements.txt
+    
+    # Start command (override from Dockerfile if needed)
+    # startCommand: uvicorn api_server:app --host 0.0.0.0 --port 8080
