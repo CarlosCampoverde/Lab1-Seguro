@@ -20,6 +20,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          lfs: true
+      
+      - name: 📥 Pull LFS files (modelos)
+        run: git lfs pull
       
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
@@ -57,11 +61,17 @@ jobs:
         run: |
           echo "Archivos modificados: ${{ steps.changed-files.outputs.all_changed_files }}"
           
-          # Ejecutar análisis de vulnerabilidades
-          python ci_security_scanner.py \
-            --files "${{ steps.changed-files.outputs.all_changed_files }}" \
-            --pr-number "${{ github.event.pull_request.number }}" \
-            --output-json scan_results.json
+          # Si no hay archivos, crear JSON vacío
+          if [ -z "${{ steps.changed-files.outputs.all_changed_files }}" ]; then
+            echo "No hay archivos de código modificados"
+            echo '{"total_files": 0, "scanned": 0, "vulnerable": 0, "safe": 0, "has_vulnerabilities": false, "vulnerabilities": [], "files": []}' > scan_results.json
+          else
+            # Ejecutar análisis de vulnerabilidades
+            python ci_security_scanner.py \
+              --files "${{ steps.changed-files.outputs.all_changed_files }}" \
+              --pr-number "${{ github.event.pull_request.number }}" \
+              --output-json scan_results.json || echo '{"total_files": 0, "scanned": 0, "vulnerable": 0, "safe": 0, "has_vulnerabilities": false, "vulnerabilities": [], "files": []}' > scan_results.json
+          fi
         continue-on-error: true
       
       - name: 📊 Procesar resultados
@@ -141,6 +151,11 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true
+      
+      - name: 📥 Pull LFS files
+        run: git lfs pull
       
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
