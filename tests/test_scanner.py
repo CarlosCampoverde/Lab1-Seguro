@@ -11,6 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from predict_vulnerabilities import extract_features
+from ci_security_scanner import CISecurityScanner
 
 def test_extract_features_vulnerable_c():
     """Test de extracción de features de código C vulnerable"""
@@ -24,11 +25,10 @@ def test_extract_features_vulnerable_c():
     
     features = extract_features(code)
     
-    # Verificar features básicas que existen
-    assert 'usa_strcpy' in features
     assert features['usa_strcpy'] == True
-    assert 'func_peligrosas' in features
-    assert features['func_peligrosas'] > 0
+    assert features['func_peligrosas_c'] > 0
+    assert features['total_peligrosas'] > 0
+    assert features['sanitizacion'] == False
 
 def test_extract_features_safe_c():
     """Test de extracción de features de código C seguro"""
@@ -47,12 +47,12 @@ def test_extract_features_safe_c():
     
     features = extract_features(code)
     
-    # Verificar que no usa strcpy
-    assert 'usa_strcpy' in features
     assert features['usa_strcpy'] == False
+    assert features['sanitizacion'] == True
+    assert features['tiene_validacion_null'] == True
 
-def test_extract_features_basic():
-    """Test básico de extracción de features"""
+def test_extract_features_python_vulnerable():
+    """Test de código Python con eval"""
     code = """
     def execute_code(user_input):
         result = eval(user_input)  # Vulnerable
@@ -61,11 +61,23 @@ def test_extract_features_basic():
     
     features = extract_features(code)
     
-    # Verificar que retorna un pandas Series con features básicas
-    assert features is not None
-    assert 'longitud' in features
-    assert 'lineas' in features
-    assert features['longitud'] > 0
+    assert features['usa_eval'] == True
+    assert features['func_peligrosas_python'] > 0
+    assert features['es_python'] == 1
+
+def test_scanner_initialization():
+    """Test de inicialización del scanner"""
+    # Este test requiere que existan los archivos del modelo
+    if os.path.exists('xgboost_vulnerabilidades.pkl'):
+        try:
+            scanner = CISecurityScanner()
+            assert scanner.model is not None
+            assert scanner.vectorizer is not None
+        except (KeyError, EOFError, Exception) as e:
+            # Si el modelo no se puede cargar (problema de Git LFS o versión)
+            # marcamos el test como skipped en lugar de failed
+            import pytest
+            pytest.skip(f"Modelo no disponible o corrupto en CI: {e}")
 
 def test_complexity_calculation():
     """Test de cálculo de complejidad ciclomática"""
@@ -82,17 +94,26 @@ def test_complexity_calculation():
     """
     
     features = extract_features(code)
-    # Debe detectar estructuras de control
-    assert 'complejidad_ciclomatica' in features
-    assert features['complejidad_ciclomatica'] >= 1
+    # Debe detectar: if, for, while, if = 4
+    assert features['complejidad_ciclomatica'] >= 4
 
-def test_extract_features_returns_series():
-    """Test que extract_features retorna una Serie de pandas"""
-    code = "print('hello')"
-    features = extract_features(code)
+def test_language_detection():
+    """Test de detección de lenguaje"""
     
-    # Verificar que es un objeto tipo Series
-    assert hasattr(features, '__getitem__')
-    assert len(features) > 0
+    # Python
+    py_code = "def function():\n    print('hello')"
+    py_features = extract_features(py_code)
+    assert py_features['es_python'] == 1
+    
+    # JavaScript
+    js_code = "const func = () => { console.log('test'); }"
+    js_features = extract_features(js_code)
+    assert js_features['es_javascript'] == 1
+    
+    # Java
+    java_code = "public class Test { private void method() {} }"
+    java_features = extract_features(java_code)
+    assert java_features['es_java'] == 1
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

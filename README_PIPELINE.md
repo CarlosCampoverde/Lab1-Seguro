@@ -2,16 +2,19 @@
 
 ## 📋 Descripción
 
-Pipeline automatizado de seguridad que integra un modelo de Machine Learning (XGBoost) entrenado con metodología SEMMA para detectar vulnerabilidades en código C/C++ dentro del flujo de trabajo GitHub Actions.
+Pipeline automatizado de seguridad que integra un modelo de Machine Learning (XGBoost) entrenado con metodología SEMMA para detectar vulnerabilidades en código **multi-lenguaje** (C, C++, Python, Java, JavaScript, PHP, Ruby, Go) dentro del flujo de trabajo GitHub Actions.
 
 ## 🎯 Características
 
+- ✅ **Soporte multi-lenguaje**: 8 lenguajes (C, C++, Python, Java, JavaScript, PHP, Ruby, Go)
 - ✅ **Análisis automático** en cada push y pull request
-- ✅ **Detección de vulnerabilidades** con modelo XGBoost (89.8% accuracy)
+- ✅ **Detección de vulnerabilidades** con modelo XGBoost (65.5% accuracy en dataset balanceado)
+- ✅ **Detección automática de lenguaje** basada en extensiones y patrones de código
 - ✅ **Reportes HTML** con explicaciones SHAP interpretables
 - ✅ **Alertas automáticas** mediante issues de GitHub
 - ✅ **Comentarios en PRs** con resultados del análisis
 - ✅ **Umbral de seguridad** configurable (70% por defecto)
+- ✅ **Estadísticas por lenguaje** en reportes
 
 ## 🚀 Configuración
 
@@ -48,9 +51,13 @@ Lab1-Seguro/
 
 ### Análisis local
 
-Analizar un archivo específico:
+Analizar un archivo específico (cualquier lenguaje soportado):
 ```bash
 python predict_vulnerabilities.py archivo.c
+python predict_vulnerabilities.py script.py
+python predict_vulnerabilities.py Main.java
+python predict_vulnerabilities.py app.js
+python predict_vulnerabilities.py index.php
 ```
 
 Analizar un directorio completo:
@@ -74,7 +81,7 @@ El workflow se ejecuta automáticamente en:
 1. **Checkout del código**
 2. **Instalación de dependencias**
 3. **Verificación de modelos**
-4. **Escaneo de archivos C/C++**
+4. **Escaneo de archivos multi-lenguaje** (C, C++, Python, Java, JavaScript, TypeScript, PHP, Ruby, Go)
 5. **Generación de reporte HTML** con explicaciones SHAP
 6. **Comentario en PR** con resultados
 7. **Creación de issue** si se detectan vulnerabilidades (solo en push)
@@ -86,20 +93,27 @@ El workflow se ejecuta automáticamente en:
 
 - **Algoritmo:** XGBoost (Gradient Boosting)
 - **Metodología:** SEMMA (Sample, Explore, Modify, Model, Assess)
-- **Dataset:** DiverseVul (10,000 funciones C/C++)
-- **Accuracy:** ~89.8%
-- **Features:** 9 manuales + 100 TF-IDF
+- **Dataset:** DiverseVul (10,000 funciones de 8 lenguajes)
+- **Lenguajes:** C, C++, Python, Java, JavaScript, PHP, Ruby, Go
+- **Accuracy:** ~65.5% (dataset balanceado)
+- **Features:** 9 manuales (adaptadas por lenguaje) + 100 TF-IDF
 
 ### Features extraídas
 
-**Manuales:**
+**Manuales (adaptadas por lenguaje):**
 - Longitud del código
 - Número de líneas
-- Funciones peligrosas detectadas
-- Uso de `strcpy`, `gets`, `system`
+- Funciones peligrosas detectadas (específicas por lenguaje):
+  - C/C++: `strcpy`, `gets`, `system`
+  - Python: `eval`, `exec`, `pickle.loads`
+  - Java: `Runtime.exec`, `ProcessBuilder`
+  - JavaScript: `eval`, `innerHTML`
+  - PHP: `eval`, `exec`, `unserialize`
+  - Ruby: `eval`, `system`, `Marshal.load`
+  - Go: `exec.Command`, `unsafe.Pointer`
 - Presencia de sanitización
-- Complejidad ciclomática
-- Nivel de anidamiento
+- Complejidad ciclomática (adaptada por sintaxis)
+- Anidamiento (llaves vs indentación)
 
 **TF-IDF:**
 - 100 features textuales con tri-gramas

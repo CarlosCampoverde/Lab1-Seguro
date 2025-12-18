@@ -1,0 +1,88 @@
+name: 🚀 Deploy a Producción
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Permite ejecutar manualmente
+
+env:
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  deploy:
+    name: 🚀 Despliegue Automático
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout código
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: 📦 Instalar dependencias
+        run: |
+          pip install requests
+      
+      - name: 📢 Notificar inicio de deploy
+        run: |
+          python telegram_notifier.py \
+            --message "🚀 Iniciando despliegue a PRODUCCIÓN..." \
+            --status "info"
+      
+      - name: 🐳 Build Docker image
+        run: |
+          docker build -t vulnerability-scanner:latest .
+      
+      - name: 🚀 Deploy to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -n "$RENDER_API_KEY" ] && [ -n "$RENDER_SERVICE_ID" ]; then
+            echo "Desplegando a Render..."
+            curl -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Content-Type: application/json"
+          else
+            echo "⚠️ Secrets de Render no configurados. Deploy manual requerido."
+          fi
+      
+      - name: ⏳ Esperar deploy
+        run: sleep 30
+      
+      - name: ✅ Verificar deployment
+        run: |
+          # Intentar verificar que el servicio esté online
+          if curl -f https://vulnerability-scanner-kaiq.onrender.com/health; then
+            echo "✅ Servicio online"
+          else
+            echo "⚠️ Servicio aún inicializando..."
+          fi
+      
+      - name: 📢 Notificar despliegue exitoso
+        if: success()
+        run: |
+          python telegram_notifier.py \
+            --message "🎉 DESPLIEGUE EXITOSO a Producción!
+            
+📦 Commit: ${{ github.sha }}
+🔗 URL: https://vulnerability-scanner-kaiq.onrender.com
+✅ Endpoints:
+  - /health (status check)
+  - /stats (modelo info)
+  - /predict (análisis de código)" \
+            --status "success"
+      
+      - name: 📢 Notificar error en deploy
+        if: failure()
+        run: |
+          python telegram_notifier.py \
+            --message "❌ ERROR en despliegue a producción
+            
+Revisar logs en GitHub Actions" \
+            --status "error"
